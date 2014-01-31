@@ -174,6 +174,10 @@ See the Apache License Version 2.0 for the specific language governing permissio
         <plugin>
           <artifactId>maven-compiler-plugin</artifactId>
           <version>2.3.2</version>
+            <configuration>
+                <target>1.6</target>
+                <source>1.6</source>
+            </configuration>
         </plugin>
         <plugin>
           <groupId>org.codehaus.mojo</groupId>
@@ -182,13 +186,13 @@ See the Apache License Version 2.0 for the specific language governing permissio
           <configuration>
             <signature>
               <groupId>org.codehaus.mojo.signature</groupId>
-              <artifactId>java15</artifactId>
+              <artifactId>java16</artifactId>
               <version>1.0</version>
             </signature>
           </configuration>
           <executions>
             <execution>
-              <id>check-java-1.5-compat</id>
+              <id>check-java-1.6-compat</id>
               <phase>process-classes</phase>
               <goals>
                 <goal>check</goal>
