@@ -637,7 +637,6 @@ public final class InjectionPoint {
       if( cachedFields.size()>0 ) {
           injectableMembers.addAll(cachedFields);
       } else {
-          final LinkedList<InjectableMember> tmp = new LinkedList<InjectableMember>();
           for (Field field : currentRawType.getDeclaredFields()) {
             if (Modifier.isStatic(field.getModifiers()) == statics) {
               Annotation atInject = getAtInject(field);
@@ -646,12 +645,11 @@ public final class InjectionPoint {
                 if (injectableField.jsr330 && Modifier.isFinal(field.getModifiers())) {
                   errors.cannotInjectFinalField(field);
                 }
-                tmp.add(injectableField);
+                cachedFields.add(injectableField);
                 injectableMembers.add(injectableField);
               }
             }
           }
-          cachedFields.addAll(tmp);
       }
 
       for (Method method : currentRawType.getDeclaredMethods()) {
