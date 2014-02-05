@@ -18,9 +18,7 @@ package com.google.inject.spi;
 
 import static com.google.inject.internal.MoreTypes.getRawType;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Lists;
+import com.google.common.collect.*;
 import com.google.inject.ConfigurationException;
 import com.google.inject.Inject;
 import com.google.inject.Key;
@@ -584,6 +582,29 @@ public final class InjectionPoint {
     }
   }
 
+
+    static class Pair<A,B> {
+        final A a;
+        final B b;
+
+        public Pair(A a, B b) {
+            this.a = a;
+            this.b = b;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if( !(o instanceof Pair))
+                return false;
+
+            final Pair<?,?> other = (Pair<?,?>)o;
+            return a.equals(other.a) && b.equals(other.b); // doesn't handle null
+        }
+    }
+
+    private static final Multimap<Pair<Class<?>,Boolean>,InjectableMember> cachedInjectableFields = ArrayListMultimap.create();
+
+
   /**
    * Returns an ordered, immutable set of injection points for the given type. Members in
    * superclasses come before members in subclasses. Within a class, fields come before methods.
@@ -610,21 +631,30 @@ public final class InjectionPoint {
       }
 
       TypeLiteral<?> current = hierarchy.get(i);
+      Class<?> currentRawType = current.getRawType();
 
-      for (Field field : current.getRawType().getDeclaredFields()) {
-        if (Modifier.isStatic(field.getModifiers()) == statics) {
-          Annotation atInject = getAtInject(field);
-          if (atInject != null) {
-            InjectableField injectableField = new InjectableField(current, field, atInject);
-            if (injectableField.jsr330 && Modifier.isFinal(field.getModifiers())) {
-              errors.cannotInjectFinalField(field);
+      Collection<InjectableMember> cachedFields = cachedInjectableFields.get(new Pair<Class<?>,Boolean>(currentRawType,statics));
+      if( cachedFields.size()>0 ) {
+          injectableMembers.addAll(cachedFields);
+      } else {
+          final LinkedList<InjectableMember> tmp = new LinkedList<InjectableMember>();
+          for (Field field : currentRawType.getDeclaredFields()) {
+            if (Modifier.isStatic(field.getModifiers()) == statics) {
+              Annotation atInject = getAtInject(field);
+              if (atInject != null) {
+                InjectableField injectableField = new InjectableField(current, field, atInject);
+                if (injectableField.jsr330 && Modifier.isFinal(field.getModifiers())) {
+                  errors.cannotInjectFinalField(field);
+                }
+                tmp.add(injectableField);
+                injectableMembers.add(injectableField);
+              }
             }
-            injectableMembers.add(injectableField);
           }
-        }
+          cachedFields.addAll(tmp);
       }
 
-      for (Method method : current.getRawType().getDeclaredMethods()) {
+      for (Method method : currentRawType.getDeclaredMethods()) {
         if (Modifier.isStatic(method.getModifiers()) == statics) {
           Annotation atInject = getAtInject(method);
           if (atInject != null) {
