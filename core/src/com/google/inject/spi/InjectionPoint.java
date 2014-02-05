@@ -38,14 +38,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -100,7 +93,7 @@ public final class InjectionPoint {
     errors.throwConfigurationExceptionIfErrorsExist();
 
     this.dependencies = ImmutableList.<Dependency<?>>of(
-        newDependency(key, Nullability.allowsNull(annotations), -1));
+            newDependency(key, Nullability.allowsNull(annotations), -1));
   }
 
   private ImmutableList<Dependency<?>> forMember(Member member, TypeLiteral<?> type,
@@ -417,8 +410,6 @@ public final class InjectionPoint {
     final TypeLiteral<?> declaringType;
     final boolean optional;
     final boolean jsr330;
-    InjectableMember previous;
-    InjectableMember next;
 
     InjectableMember(TypeLiteral<?> declaringType, Annotation atInject) {
       this.declaringType = declaringType;
@@ -479,43 +470,6 @@ public final class InjectionPoint {
     return a == null ? member.getAnnotation(Inject.class) : a;
   }
 
-  /**
-   * Linked list of injectable members.
-   */
-  static class InjectableMembers {
-    InjectableMember head;
-    InjectableMember tail;
-
-    void add(InjectableMember member) {
-      if (head == null) {
-        head = tail = member;
-      } else {
-        member.previous = tail;
-        tail.next = member;
-        tail = member;
-      }
-    }
-
-    void remove(InjectableMember member) {
-      if (member.previous != null) {
-        member.previous.next = member.next;
-      }
-      if (member.next != null) {
-        member.next.previous = member.previous;
-      }
-      if (head == member) {
-        head = member.next;
-      }
-      if (tail == member) {
-        tail = member.previous;
-      }
-    }
-
-    boolean isEmpty() {
-      return head == null;
-    }
-  }
-
   /** Position in type hierarchy. */
   enum Position {
     TOP, // No need to check for overridden methods
@@ -528,11 +482,11 @@ public final class InjectionPoint {
    * Uses our position in the type hierarchy to perform optimizations.
    */
   static class OverrideIndex {
-    final InjectableMembers injectableMembers;
+    final LinkedList<InjectableMember> injectableMembers;
     Map<Signature, List<InjectableMethod>> bySignature;
     Position position = Position.TOP;
 
-    OverrideIndex(InjectableMembers injectableMembers) {
+    OverrideIndex(LinkedList<InjectableMember> injectableMembers) {
       this.injectableMembers = injectableMembers;
     }
 
@@ -567,8 +521,7 @@ public final class InjectionPoint {
         // We encountered a method in a subclass. Time to index the
         // methods in the parent class.
         bySignature = new HashMap<Signature, List<InjectableMethod>>();
-        for (InjectableMember member = injectableMembers.head; member != null;
-            member = member.next) {
+        for (InjectableMember member : injectableMembers ) {
           if (!(member instanceof InjectableMethod)) continue;
           InjectableMethod im = (InjectableMethod) member;
           if (im.isFinal()) continue;
@@ -641,7 +594,7 @@ public final class InjectionPoint {
    */
   private static Set<InjectionPoint> getInjectionPoints(final TypeLiteral<?> type,
       boolean statics, Errors errors) {
-    InjectableMembers injectableMembers = new InjectableMembers();
+      LinkedList<InjectableMember>  injectableMembers = new LinkedList<InjectableMember>();
     OverrideIndex overrideIndex = null;
 
     List<TypeLiteral<?>> hierarchy = hierarchyFor(type);
@@ -729,8 +682,7 @@ public final class InjectionPoint {
     }
 
     ImmutableSet.Builder<InjectionPoint> builder = ImmutableSet.builder();
-    for (InjectableMember im = injectableMembers.head; im != null;
-        im = im.next) {
+    for (InjectableMember im : injectableMembers) {
       try {
         builder.add(im.toInjectionPoint());
       } catch (ConfigurationException ignorable) {
