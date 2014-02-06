@@ -579,13 +579,25 @@ public final class InjectionPoint {
             this.b = b;
         }
 
+
         @Override
         public boolean equals(Object o) {
-            if( !(o instanceof Pair))
-                return false;
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
 
-            final Pair<?,?> other = (Pair<?,?>)o;
-            return a.equals(other.a) && b.equals(other.b); // doesn't handle null
+            Pair pair = (Pair) o;
+
+            if (!a.equals(pair.a)) return false;
+            if (!b.equals(pair.b)) return false;
+
+            return true;
+        }
+
+        @Override
+        public int hashCode() {
+            int result = a.hashCode();
+            result = 31 * result + b.hashCode();
+            return result;
         }
     }
 
