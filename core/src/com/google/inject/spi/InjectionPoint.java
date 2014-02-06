@@ -613,7 +613,8 @@ public final class InjectionPoint {
       TypeLiteral<?> current = hierarchy.get(i);
       Class<?> currentRawType = current.getRawType();
 
-      Collection<InjectableField> cachedFields = cachedInjectableFields.get(new Pair<Class<?>,Boolean>(currentRawType,statics));
+        final Pair<Class<?>, Boolean> cacheKey = new Pair<Class<?>, Boolean>(currentRawType, statics);
+        Collection<InjectableField> cachedFields = cachedInjectableFields.get(cacheKey);
       if( cachedFields.size()>0 ) {
           injectableMembers.addAll(cachedFields);
       } else {
@@ -632,7 +633,7 @@ public final class InjectionPoint {
           }
       }
 
-      Collection<InjectableMethod> cachedMembers = cachedInjectableMembers.get(new Pair<Class<?>,Boolean>(currentRawType,statics));
+      Collection<InjectableMethod> cachedMembers = cachedInjectableMembers.get(cacheKey);
       for (Method method : currentRawType.getDeclaredMethods()) {
         if (Modifier.isStatic(method.getModifiers()) == statics) {
           Annotation atInject = getAtInject(method);
