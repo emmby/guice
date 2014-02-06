@@ -468,13 +468,6 @@ public final class InjectionPoint {
     return a == null ? member.getAnnotation(Inject.class) : a;
   }
 
-  /** Position in type hierarchy. */
-  enum Position {
-    TOP, // No need to check for overridden methods
-    MIDDLE,
-    BOTTOM // Methods won't be overridden
-  }
-
   /**
    * Keeps track of injectable methods so we can remove methods that get overridden in O(1) time.
    * Uses our position in the type hierarchy to perform optimizations.
@@ -482,7 +475,6 @@ public final class InjectionPoint {
   static class OverrideIndex {
     final LinkedList<InjectableMember> injectableMembers;
     Map<Signature, List<InjectableMethod>> bySignature;
-    Position position = Position.TOP;
 
     OverrideIndex(LinkedList<InjectableMember> injectableMembers) {
       this.injectableMembers = injectableMembers;
@@ -510,10 +502,6 @@ public final class InjectionPoint {
      */
     boolean removeIfOverriddenBy(Method method, boolean alwaysRemove, 
         InjectableMethod injectableMethod) {
-      if (position == Position.TOP) {
-        // If we're at the top of the hierarchy, there's nothing to override.
-        return false;
-      }
 
       if (bySignature == null) {
         // We encountered a method in a subclass. Time to index the
@@ -563,8 +551,7 @@ public final class InjectionPoint {
      */
     void add(InjectableMethod injectableMethod) {
       injectableMembers.add(injectableMethod);
-      if (position == Position.BOTTOM
-          || injectableMethod.isFinal()) {
+      if (injectableMethod.isFinal()) {
         // This method can't be overridden, so there's no need to index it.
         return;
       }
@@ -603,6 +590,7 @@ public final class InjectionPoint {
     }
 
     private static final Multimap<Pair<Class<?>,Boolean>,InjectableMember> cachedInjectableFields = ArrayListMultimap.create();
+    private static final Multimap<Pair<Class<?>,Boolean>,InjectableMember> cachedInjectableMembers = ArrayListMultimap.create();
 
 
   /**
@@ -616,19 +604,11 @@ public final class InjectionPoint {
   private static Set<InjectionPoint> getInjectionPoints(final TypeLiteral<?> type,
       boolean statics, Errors errors) {
       LinkedList<InjectableMember>  injectableMembers = new LinkedList<InjectableMember>();
-    OverrideIndex overrideIndex = null;
+    OverrideIndex overrideIndex = new OverrideIndex(injectableMembers);
 
     List<TypeLiteral<?>> hierarchy = hierarchyFor(type);
     int topIndex = hierarchy.size() - 1;
     for (int i = topIndex; i >= 0; i--) {
-      if (overrideIndex != null && i < topIndex) {
-        // Knowing the position within the hierarchy helps us make optimizations.
-        if (i == 0) {
-          overrideIndex.position = Position.BOTTOM;
-        } else {
-          overrideIndex.position = Position.MIDDLE;
-        }
-      }
 
       TypeLiteral<?> current = hierarchy.get(i);
       Class<?> currentRawType = current.getRawType();
@@ -652,6 +632,7 @@ public final class InjectionPoint {
           }
       }
 
+      Collection<InjectableMember> cachedMembers = cachedInjectableMembers.get(new Pair<Class<?>,Boolean>(currentRawType,statics));
       for (Method method : currentRawType.getDeclaredMethods()) {
         if (Modifier.isStatic(method.getModifiers()) == statics) {
           Annotation atInject = getAtInject(method);
@@ -660,7 +641,6 @@ public final class InjectionPoint {
                 current, method, atInject);
             if (checkForMisplacedBindingAnnotations(method, errors)
                 || !isValidMethod(injectableMethod, errors)) {
-              if (overrideIndex != null) {
                 boolean removed = overrideIndex.removeIfOverriddenBy(method, false, injectableMethod);
                 if(removed) {
                   logger.log(Level.WARNING, "Method: {0} is not a valid injectable method ("
@@ -669,29 +649,17 @@ public final class InjectionPoint {
                       + "Because it is not valid, the method will not be injected. "
                       + "To fix this, make the method a valid injectable method.", method);
                 }
-              }
-              continue;
+                continue;
             }
             if (statics) {
               injectableMembers.add(injectableMethod);
             } else {
-              if (overrideIndex == null) {
-                /*
-                 * Creating the override index lazily means that the first type in the hierarchy
-                 * with injectable methods (not necessarily the top most type) will be treated as
-                 * the TOP position and will enjoy the same optimizations (no checks for overridden
-                 * methods, etc.).
-                 */
-                overrideIndex = new OverrideIndex(injectableMembers);
-              } else {
-                // Forcibly remove the overriden method, otherwise we'll inject
+                // Forcibly remove the overridden method, otherwise we'll inject
                 // it twice.
                 overrideIndex.removeIfOverriddenBy(method, true, injectableMethod);
-              }
-              overrideIndex.add(injectableMethod);
+                overrideIndex.add(injectableMethod);
             }
           } else {
-            if(overrideIndex != null) {
               boolean removed = overrideIndex.removeIfOverriddenBy(method, false, null);
               if(removed) {
                 logger.log(Level.WARNING, "Method: {0} is not annotated with @Inject but "
@@ -699,7 +667,6 @@ public final class InjectionPoint {
                     + "it is not annotated with @Inject, the method will not be injected. "
                     + "To fix this, annotate the method with @Inject.", method);
               }
-            }
           }
         }
       }
