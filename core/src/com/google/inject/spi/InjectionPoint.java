@@ -589,8 +589,8 @@ public final class InjectionPoint {
         }
     }
 
-    private static final Multimap<Pair<Class<?>,Boolean>,InjectableMember> cachedInjectableFields = ArrayListMultimap.create();
-    private static final Multimap<Pair<Class<?>,Boolean>,InjectableMember> cachedInjectableMembers = ArrayListMultimap.create();
+    private static final Multimap<Pair<Class<?>,Boolean>,InjectableField> cachedInjectableFields = ArrayListMultimap.create();
+    private static final Multimap<Pair<Class<?>,Boolean>,InjectableMethod> cachedInjectableMembers = ArrayListMultimap.create();
 
 
   /**
@@ -613,7 +613,7 @@ public final class InjectionPoint {
       TypeLiteral<?> current = hierarchy.get(i);
       Class<?> currentRawType = current.getRawType();
 
-      Collection<InjectableMember> cachedFields = cachedInjectableFields.get(new Pair<Class<?>,Boolean>(currentRawType,statics));
+      Collection<InjectableField> cachedFields = cachedInjectableFields.get(new Pair<Class<?>,Boolean>(currentRawType,statics));
       if( cachedFields.size()>0 ) {
           injectableMembers.addAll(cachedFields);
       } else {
@@ -632,7 +632,7 @@ public final class InjectionPoint {
           }
       }
 
-      Collection<InjectableMember> cachedMembers = cachedInjectableMembers.get(new Pair<Class<?>,Boolean>(currentRawType,statics));
+      Collection<InjectableMethod> cachedMembers = cachedInjectableMembers.get(new Pair<Class<?>,Boolean>(currentRawType,statics));
       for (Method method : currentRawType.getDeclaredMethods()) {
         if (Modifier.isStatic(method.getModifiers()) == statics) {
           Annotation atInject = getAtInject(method);
