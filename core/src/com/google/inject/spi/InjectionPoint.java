@@ -16,8 +16,6 @@
 
 package com.google.inject.spi;
 
-import static com.google.inject.internal.MoreTypes.getRawType;
-
 import com.google.common.collect.*;
 import com.google.inject.ConfigurationException;
 import com.google.inject.Inject;
@@ -30,15 +28,12 @@ import com.google.inject.internal.Nullability;
 import com.google.inject.internal.util.Classes;
 
 import java.lang.annotation.Annotation;
-import java.lang.reflect.AnnotatedElement;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
-import java.lang.reflect.Member;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
+import java.lang.reflect.*;
 import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import static com.google.inject.internal.MoreTypes.getRawType;
 
 /**
  * A constructor, field or method that can receive injections. Typically this is a member with the
@@ -582,15 +577,13 @@ public final class InjectionPoint {
 
         @Override
         public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
+          if (this == o) return true;
+          if (o == null || getClass() != o.getClass()) return false;
 
-            Pair pair = (Pair) o;
+          Pair pair = (Pair) o;
 
-            if (!a.equals(pair.a)) return false;
-            if (!b.equals(pair.b)) return false;
+          return a.equals(pair.a) && b.equals(pair.b);
 
-            return true;
         }
 
         @Override
@@ -601,8 +594,7 @@ public final class InjectionPoint {
         }
     }
 
-    private static final Multimap<Pair<Class<?>,Boolean>,InjectableField> cachedInjectableFields = ArrayListMultimap.create();
-    private static final Multimap<Pair<Class<?>,Boolean>,InjectableMethod> cachedInjectableMembers = ArrayListMultimap.create();
+    private static final Multimap<Pair<Class<?>,Boolean>,InjectableMember> cachedInjectableMembers = ArrayListMultimap.create();
 
 
   /**
@@ -615,76 +607,8 @@ public final class InjectionPoint {
    */
   private static Set<InjectionPoint> getInjectionPoints(final TypeLiteral<?> type,
       boolean statics, Errors errors) {
-      LinkedList<InjectableMember>  injectableMembers = new LinkedList<InjectableMember>();
-    OverrideIndex overrideIndex = new OverrideIndex(injectableMembers);
 
-    List<TypeLiteral<?>> hierarchy = hierarchyFor(type);
-    int topIndex = hierarchy.size() - 1;
-    for (int i = topIndex; i >= 0; i--) {
-
-      TypeLiteral<?> current = hierarchy.get(i);
-      Class<?> currentRawType = current.getRawType();
-
-        final Pair<Class<?>, Boolean> cacheKey = new Pair<Class<?>, Boolean>(currentRawType, statics);
-        Collection<InjectableField> cachedFields = cachedInjectableFields.get(cacheKey);
-      if( cachedFields.size()>0 ) {
-          injectableMembers.addAll(cachedFields);
-      } else {
-          for (Field field : currentRawType.getDeclaredFields()) {
-            if (Modifier.isStatic(field.getModifiers()) == statics) {
-              Annotation atInject = getAtInject(field);
-              if (atInject != null) {
-                InjectableField injectableField = new InjectableField(current, field, atInject);
-                if (injectableField.jsr330 && Modifier.isFinal(field.getModifiers())) {
-                  errors.cannotInjectFinalField(field);
-                }
-                cachedFields.add(injectableField);
-                injectableMembers.add(injectableField);
-              }
-            }
-          }
-      }
-
-      Collection<InjectableMethod> cachedMembers = cachedInjectableMembers.get(cacheKey);
-      for (Method method : currentRawType.getDeclaredMethods()) {
-        if (Modifier.isStatic(method.getModifiers()) == statics) {
-          Annotation atInject = getAtInject(method);
-          if (atInject != null) {
-            InjectableMethod injectableMethod = new InjectableMethod(
-                current, method, atInject);
-            if (checkForMisplacedBindingAnnotations(method, errors)
-                || !isValidMethod(injectableMethod, errors)) {
-                boolean removed = overrideIndex.removeIfOverriddenBy(method, false, injectableMethod);
-                if(removed) {
-                  logger.log(Level.WARNING, "Method: {0} is not a valid injectable method ("
-                      + "because it either has misplaced binding annotations "
-                      + "or specifies type parameters) but is overriding a method that is valid. "
-                      + "Because it is not valid, the method will not be injected. "
-                      + "To fix this, make the method a valid injectable method.", method);
-                }
-                continue;
-            }
-            if (statics) {
-              injectableMembers.add(injectableMethod);
-            } else {
-                // Forcibly remove the overridden method, otherwise we'll inject
-                // it twice.
-                overrideIndex.removeIfOverriddenBy(method, true, injectableMethod);
-                overrideIndex.add(injectableMethod);
-            }
-          } else {
-              boolean removed = overrideIndex.removeIfOverriddenBy(method, false, null);
-              if(removed) {
-                logger.log(Level.WARNING, "Method: {0} is not annotated with @Inject but "
-                    + "is overriding a method that is annotated with @javax.inject.Inject.  Because "
-                    + "it is not annotated with @Inject, the method will not be injected. "
-                    + "To fix this, annotate the method with @Inject.", method);
-              }
-          }
-        }
-      }
-    }
-
+    List<InjectableMember> injectableMembers = getInjectableMembers(type,statics,errors);
     if (injectableMembers.isEmpty()) {
       return Collections.emptySet();
     }
@@ -700,6 +624,86 @@ public final class InjectionPoint {
       }
     }
     return builder.build();
+
+  }
+
+
+  private static List<InjectableMember> getInjectableMembers(final TypeLiteral<?> type,
+      boolean statics, Errors errors) {
+      LinkedList<InjectableMember>  injectableMembers = new LinkedList<InjectableMember>();
+
+
+    // Return cached values if available
+    Class<?> currentRawType = type.getRawType();
+    Pair<Class<?>, Boolean> cacheKey = new Pair<Class<?>, Boolean>(currentRawType, statics);
+    List<InjectableMember> cachedMembers = (List<InjectableMember>) cachedInjectableMembers.get(cacheKey);
+    if( cachedMembers.size()>0 )
+      return cachedMembers;
+
+
+    // Merge InjectableMembers with the parent's
+    Class<?> superclass = type.getRawType().getSuperclass();
+    if( superclass != Object.class )
+      injectableMembers.addAll(getInjectableMembers(type.getSupertype(superclass), statics, errors));
+
+
+    OverrideIndex overrideIndex = new OverrideIndex(injectableMembers);
+
+    for (Field field : currentRawType.getDeclaredFields()) {
+      if (Modifier.isStatic(field.getModifiers()) == statics) {
+        Annotation atInject = getAtInject(field);
+        if (atInject != null) {
+          InjectableField injectableField = new InjectableField(type, field, atInject);
+          if (injectableField.jsr330 && Modifier.isFinal(field.getModifiers())) {
+            errors.cannotInjectFinalField(field);
+          }
+          injectableMembers.add(injectableField);
+        }
+      }
+    }
+
+    for (Method method : currentRawType.getDeclaredMethods()) {
+      if (Modifier.isStatic(method.getModifiers()) == statics) {
+        Annotation atInject = getAtInject(method);
+        if (atInject != null) {
+          InjectableMethod injectableMethod = new InjectableMethod(
+              type, method, atInject);
+          if (checkForMisplacedBindingAnnotations(method, errors)
+              || !isValidMethod(injectableMethod, errors)) {
+              boolean removed = overrideIndex.removeIfOverriddenBy(method, false, injectableMethod);
+              if(removed) {
+                logger.log(Level.WARNING, "Method: {0} is not a valid injectable method ("
+                    + "because it either has misplaced binding annotations "
+                    + "or specifies type parameters) but is overriding a method that is valid. "
+                    + "Because it is not valid, the method will not be injected. "
+                    + "To fix this, make the method a valid injectable method.", method);
+              }
+              continue;
+          }
+          if (statics) {
+            injectableMembers.add(injectableMethod);
+          } else {
+            // Forcibly remove the overridden method, otherwise we'll inject
+            // it twice.
+            overrideIndex.removeIfOverriddenBy(method, true, injectableMethod);
+            overrideIndex.add(injectableMethod);
+          }
+        } else {
+            boolean removed = overrideIndex.removeIfOverriddenBy(method, false, null);
+            if(removed) {
+              logger.log(Level.WARNING, "Method: {0} is not annotated with @Inject but "
+                  + "is overriding a method that is annotated with @javax.inject.Inject.  Because "
+                  + "it is not annotated with @Inject, the method will not be injected. "
+                  + "To fix this, annotate the method with @Inject.", method);
+            }
+        }
+      }
+    }
+
+    cachedInjectableMembers.putAll(cacheKey, injectableMembers);
+
+    return injectableMembers;
+
   }
 
   private static boolean isValidMethod(InjectableMethod injectableMethod,
@@ -717,16 +721,6 @@ public final class InjectionPoint {
       }
     }
     return result;
-  }
-
-  private static List<TypeLiteral<?>> hierarchyFor(TypeLiteral<?> type) {
-    List<TypeLiteral<?>> hierarchy = new ArrayList<TypeLiteral<?>>();
-    TypeLiteral<?> current = type;
-    while (current.getRawType() != Object.class) {
-      hierarchy.add(current);
-      current = current.getSupertype(current.getRawType().getSuperclass());
-    }
-    return hierarchy;
   }
 
   /**
@@ -747,7 +741,7 @@ public final class InjectionPoint {
   }
 
   /**
-   * A method signature. Used to handle method overridding.
+   * A method signature. Used to handle method overriding.
    */
   static class Signature {
 
