@@ -35,6 +35,7 @@ import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
 import java.lang.reflect.WildcardType;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.NoSuchElementException;
 
@@ -272,7 +273,7 @@ public class MoreTypes {
       while (rawType != Object.class) {
         Class<?> rawSupertype = rawType.getSuperclass();
         if (rawSupertype == toResolve) {
-          return rawType.getGenericSuperclass();
+          return getGenericSuperclass(rawType);
         } else if (toResolve.isAssignableFrom(rawSupertype)) {
           return getGenericSupertype(rawType.getGenericSuperclass(), rawSupertype, toResolve);
         }
@@ -282,6 +283,18 @@ public class MoreTypes {
 
     // we can't resolve this further
     return toResolve;
+  }
+
+  private static HashMap<Class<?>, Type> cacheGenericSuperclass = new HashMap<Class<?>, Type>();
+
+  private static Type getGenericSuperclass(Class<?> rawType) {
+    Type t = cacheGenericSuperclass.get(rawType);
+    if( t!=null )
+      return t;
+
+    t = rawType.getGenericSuperclass();
+    cacheGenericSuperclass.put(rawType,t);
+    return t;
   }
 
   public static Type resolveTypeVariable(Type type, Class<?> rawType, TypeVariable unknown) {
