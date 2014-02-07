@@ -287,7 +287,7 @@ public class MoreTypes {
 
   private static HashMap<Class<?>, Type> cacheGenericSuperclass = new HashMap<Class<?>, Type>();
 
-  private static Type getGenericSuperclass(Class<?> rawType) {
+  public static Type getGenericSuperclass(Class<?> rawType) {
     Type t = cacheGenericSuperclass.get(rawType);
     if( t!=null )
       return t;
