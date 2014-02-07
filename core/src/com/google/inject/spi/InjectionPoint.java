@@ -16,9 +16,9 @@
 
 package com.google.inject.spi;
 
-import static com.google.inject.internal.MoreTypes.getRawType;
-
-import com.google.common.collect.*;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Lists;
 import com.google.inject.ConfigurationException;
 import com.google.inject.Inject;
 import com.google.inject.Key;
@@ -30,15 +30,12 @@ import com.google.inject.internal.Nullability;
 import com.google.inject.internal.util.Classes;
 
 import java.lang.annotation.Annotation;
-import java.lang.reflect.AnnotatedElement;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
-import java.lang.reflect.Member;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
+import java.lang.reflect.*;
 import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import static com.google.inject.internal.MoreTypes.getRawType;
 
 /**
  * A constructor, field or method that can receive injections. Typically this is a member with the
@@ -582,15 +579,13 @@ public final class InjectionPoint {
 
         @Override
         public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
+          if (this == o) return true;
+          if (o == null || getClass() != o.getClass()) return false;
 
-            Pair pair = (Pair) o;
+          Pair pair = (Pair) o;
 
-            if (!a.equals(pair.a)) return false;
-            if (!b.equals(pair.b)) return false;
+          return a.equals(pair.a) && b.equals(pair.b);
 
-            return true;
         }
 
         @Override
@@ -600,9 +595,6 @@ public final class InjectionPoint {
             return result;
         }
     }
-
-    private static final Multimap<Pair<Class<?>,Boolean>,InjectableField> cachedInjectableFields = ArrayListMultimap.create();
-    private static final Multimap<Pair<Class<?>,Boolean>,InjectableMethod> cachedInjectableMembers = ArrayListMultimap.create();
 
 
   /**
@@ -625,27 +617,19 @@ public final class InjectionPoint {
       TypeLiteral<?> current = hierarchy.get(i);
       Class<?> currentRawType = current.getRawType();
 
-        final Pair<Class<?>, Boolean> cacheKey = new Pair<Class<?>, Boolean>(currentRawType, statics);
-        Collection<InjectableField> cachedFields = cachedInjectableFields.get(cacheKey);
-      if( cachedFields.size()>0 ) {
-          injectableMembers.addAll(cachedFields);
-      } else {
-          for (Field field : currentRawType.getDeclaredFields()) {
-            if (Modifier.isStatic(field.getModifiers()) == statics) {
-              Annotation atInject = getAtInject(field);
-              if (atInject != null) {
-                InjectableField injectableField = new InjectableField(current, field, atInject);
-                if (injectableField.jsr330 && Modifier.isFinal(field.getModifiers())) {
-                  errors.cannotInjectFinalField(field);
-                }
-                cachedFields.add(injectableField);
-                injectableMembers.add(injectableField);
-              }
+      for (Field field : currentRawType.getDeclaredFields()) {
+        if (Modifier.isStatic(field.getModifiers()) == statics) {
+          Annotation atInject = getAtInject(field);
+          if (atInject != null) {
+            InjectableField injectableField = new InjectableField(current, field, atInject);
+            if (injectableField.jsr330 && Modifier.isFinal(field.getModifiers())) {
+              errors.cannotInjectFinalField(field);
             }
+            injectableMembers.add(injectableField);
           }
+        }
       }
 
-      Collection<InjectableMethod> cachedMembers = cachedInjectableMembers.get(cacheKey);
       for (Method method : currentRawType.getDeclaredMethods()) {
         if (Modifier.isStatic(method.getModifiers()) == statics) {
           Annotation atInject = getAtInject(method);
