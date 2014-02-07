@@ -465,6 +465,13 @@ public final class InjectionPoint {
     return a == null ? member.getAnnotation(Inject.class) : a;
   }
 
+  /** Position in type hierarchy. */
+  enum Position {
+    TOP, // No need to check for overridden methods
+    MIDDLE,
+    BOTTOM // Methods won't be overridden
+  }
+
   /**
    * Keeps track of injectable methods so we can remove methods that get overridden in O(1) time.
    * Uses our position in the type hierarchy to perform optimizations.
@@ -472,6 +479,7 @@ public final class InjectionPoint {
   static class OverrideIndex {
     final LinkedList<InjectableMember> injectableMembers;
     Map<Signature, List<InjectableMethod>> bySignature;
+    Position position = Position.TOP;
 
     OverrideIndex(LinkedList<InjectableMember> injectableMembers) {
       this.injectableMembers = injectableMembers;
@@ -499,6 +507,10 @@ public final class InjectionPoint {
      */
     boolean removeIfOverriddenBy(Method method, boolean alwaysRemove, 
         InjectableMethod injectableMethod) {
+      if (position == Position.TOP) {
+        // If we're at the top of the hierarchy, there's nothing to override.
+        return false;
+      }
 
       if (bySignature == null) {
         // We encountered a method in a subclass. Time to index the
@@ -548,7 +560,8 @@ public final class InjectionPoint {
      */
     void add(InjectableMethod injectableMethod) {
       injectableMembers.add(injectableMethod);
-      if (injectableMethod.isFinal()) {
+      if (position == Position.BOTTOM
+          || injectableMethod.isFinal()) {
         // This method can't be overridden, so there's no need to index it.
         return;
       }
@@ -599,7 +612,10 @@ public final class InjectionPoint {
   private static Set<InjectionPoint> getInjectionPoints(final TypeLiteral<?> type,
       boolean statics, Errors errors) {
     LinkedList<InjectableMember>  injectableMembers = new LinkedList<InjectableMember>();
-    computeInjectableMembers(type, statics, errors, injectableMembers, new OverrideIndex(injectableMembers));
+    final OverrideIndex overrideIndex = new OverrideIndex(injectableMembers);
+    overrideIndex.position = Position.BOTTOM; // we start at the bottom of inheritance hierarchy
+    computeInjectableMembers(type, statics, errors, injectableMembers, overrideIndex);
+
     if (injectableMembers.isEmpty()) {
       return Collections.emptySet();
     }
@@ -638,10 +654,17 @@ public final class InjectionPoint {
       return;
     }
 
-
     Class<?> parentRawType = rawType.getSuperclass();
-    if( parentRawType!=null && parentRawType != Object.class )
+
+
+
+    if( parentRawType!=null && parentRawType != Object.class ) {
+      overrideIndex.position = Position.MIDDLE;
       computeInjectableMembers(type.getSupertype(parentRawType), statics, errors, injectableMembers, overrideIndex);
+    } else {
+      overrideIndex.position = Position.TOP; // we're at the top of the inheritance hierarchy
+    }
+
 
 
     for (Field field : rawType.getDeclaredFields()) {
