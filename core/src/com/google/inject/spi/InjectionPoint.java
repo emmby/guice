@@ -617,6 +617,8 @@ public final class InjectionPoint {
     return builder.build();
   }
 
+  private static final HashMap<Pair<TypeLiteral<?>,Boolean>,List<InjectableMember>> cachedInjectableMembersByRawType = new HashMap<Pair<TypeLiteral<?>,Boolean>, List<InjectableMember>>();
+
   /**
    * Returns an ordered, immutable set of injection points for the given type. Members in
    * superclasses come before members in subclasses. Within a class, fields come before methods.
@@ -628,10 +630,16 @@ public final class InjectionPoint {
   private static void computeInjectableMembers(final TypeLiteral<?> type,
      boolean statics, Errors errors, List<InjectableMember> injectableMembers, OverrideIndex overrideIndex) {
 
-
     Class<?> rawType = type.getRawType();
-    Class<?> parentRawType = rawType.getSuperclass();
+    Pair<TypeLiteral<?>,Boolean> cacheKey = new Pair<TypeLiteral<?>, Boolean>(type,statics);
+    List<InjectableMember> cachedInjectableMembers = cachedInjectableMembersByRawType.get(cacheKey);
+    if( cachedInjectableMembers!=null && cachedInjectableMembers.size()>0 ) {
+      injectableMembers.addAll(cachedInjectableMembers);
+      return;
+    }
 
+
+    Class<?> parentRawType = rawType.getSuperclass();
     if( parentRawType!=null && parentRawType != Object.class )
       computeInjectableMembers(type.getSupertype(parentRawType), statics, errors, injectableMembers, overrideIndex);
 
@@ -686,6 +694,8 @@ public final class InjectionPoint {
         }
       }
     }
+
+    cachedInjectableMembersByRawType.put(cacheKey,new ArrayList<InjectableMember>(injectableMembers));
   }
 
   private static boolean isValidMethod(InjectableMethod injectableMethod,
